@@ -1,6 +1,7 @@
 <script lang="ts">
   import mqtt from 'mqtt';
 
+  // State variables
   let topic = $state('svelte/test');
   let messageToSend = $state('');
   let messages = $state<string[]>([]);
@@ -8,25 +9,21 @@
   let error = $state('');
   let client: mqtt.MqttClient | null = null;
 
+  // Effect to handle MQTT connection and subscription
   $effect(() => {
     if (!topic) return;
-
-    // Vyčisti staré spojení a data
-    messages = [];
-    latestMessage = '';
     error = '';
+
+    // Disconnect existing client if connected
     if (client?.connected) {
       client.unsubscribe(topic);
       client.end(true);
     }
 
-    // Načti MQTT přístup z backendu
+    // Fetch MQTT configuration from backend
     (async () => {
       try {
-        const res = await fetch('/API/mqtt/config', {
-          method: 'POST'
-        });
-
+        const res = await fetch('/API/mqtt/config', { method: 'POST' });
         const cfg = await res.json();
 
         if (!res.ok) {
@@ -34,21 +31,25 @@
           return;
         }
 
+        // Connect to MQTT broker
         client = mqtt.connect(cfg.url, {
           username: cfg.username,
           password: cfg.password
         });
 
+        // Handle connection
         client.on('connect', () => {
           client?.subscribe(topic);
         });
 
+        // Handle incoming messages
         client.on('message', (_, payload) => {
           const msg = payload.toString();
-          messages.push(msg);
+          messages = [...messages, msg]; // Use immutable update
           latestMessage = msg;
         });
 
+        // Handle errors
         client.on('error', (err) => {
           console.error('MQTT chyba:', err);
           error = 'MQTT připojení selhalo';
@@ -59,11 +60,13 @@
       }
     })();
 
+    // Cleanup function
     return () => {
       client?.end(true);
     };
   });
 
+  // Function to send messages
   function sendMessage() {
     if (client?.connected && messageToSend.trim()) {
       client.publish(topic, messageToSend);
